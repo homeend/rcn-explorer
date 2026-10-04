@@ -8,8 +8,6 @@ Map and analysis of Polish property transaction prices from the GUGiK
 - `functions/api/rcn.js` – relay for the RCN WFS (the register sends no CORS headers,
   so browsers can't read it directly). Validates the request, streams the GML through,
   caches answers at the edge for a day.
-- `functions/_middleware.js` – limits the site to the countries in `ALLOWED_COUNTRIES`
-  (default `PL`). Never blocks `localhost`.
 
 ## Run locally
 
@@ -28,12 +26,10 @@ npm run deploy       # first run creates the "rcn-explorer" project; live at htt
 Or connect a GitHub repository in the Cloudflare dashboard (Workers & Pages → Create →
 Pages → Connect to Git; build command: none, output directory: `public`).
 
-`ALLOWED_COUNTRIES` comes from `wrangler.toml`; it can also be overridden in the
-dashboard under the project's Settings → Variables (`*` = everyone).
-
 ## Custom domain (e.g. bought at OVH)
 
 1. Cloudflare dashboard → Add a domain → free plan; Cloudflare shows two nameservers.
 2. OVH panel → the domain → DNS servers → replace them with Cloudflare's.
 3. Pages project → Custom domains → add the domain.
-4. Optional: Security → WAF → custom rule `ip.src.country ne "PL"` → Block.
+4. Replace `https://rcn-explorer.pages.dev/` with the new address in `public/index.html`
+   (canonical and Open Graph tags), `public/robots.txt` and `public/sitemap.xml`.

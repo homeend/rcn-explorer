@@ -102,7 +102,7 @@
   function parseLayer(bytes, layer) {
     const s = bytesToBinaryString(bytes);
     if (s.slice(0, 2000).includes('ExceptionReport')) {
-      throw new Error(`${layer}: the register service returned an error – ${decodeValue(s.slice(0, 600)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}`);
+      throw new Error(`${layer}: usługa rejestru zwróciła błąd – ${decodeValue(s.slice(0, 600)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}`);
     }
     const out = [];
     for (const m of s.matchAll(MEMBER)) {

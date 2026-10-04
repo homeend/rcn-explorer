@@ -22,12 +22,12 @@ export async function onRequestGet({ request, waitUntil }) {
   const layer = url.searchParams.get('layer');
   const bbox = (url.searchParams.get('bbox') || '').split(',').map(Number);
 
-  if (!LAYERS.has(layer)) return json({ error: 'Unknown layer.' }, 400);
-  if (bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v))) return json({ error: 'bbox must be south,west,north,east.' }, 400);
+  if (!LAYERS.has(layer)) return json({ error: 'Nieznana warstwa.' }, 400);
+  if (bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v))) return json({ error: 'Parametr bbox musi mieć postać: południe,zachód,północ,wschód.' }, 400);
   const [s, w, n, e] = bbox;
-  if (s >= n || w >= e) return json({ error: 'Empty bbox.' }, 400);
-  if (s < POLAND.s || n > POLAND.n || w < POLAND.w || e > POLAND.e) return json({ error: 'The area must be inside Poland.' }, 400);
-  if (n - s > MAX_SPAN.lat || e - w > MAX_SPAN.lon) return json({ error: 'Area too large – use a radius up to about 2 km.' }, 400);
+  if (s >= n || w >= e) return json({ error: 'Pusty obszar.' }, 400);
+  if (s < POLAND.s || n > POLAND.n || w < POLAND.w || e > POLAND.e) return json({ error: 'Obszar musi leżeć w Polsce.' }, 400);
+  if (n - s > MAX_SPAN.lat || e - w > MAX_SPAN.lon) return json({ error: 'Obszar jest za duży – użyj promienia do ok. 2 km.' }, 400);
 
   // Normalised key so equal areas share one cache entry.
   const box = bbox.map((v) => v.toFixed(4)).join(',');
@@ -51,9 +51,9 @@ export async function onRequestGet({ request, waitUntil }) {
   try {
     res = await fetch(upstream, { headers: { 'User-Agent': 'rcn-explorer (Cloudflare Pages relay)' } });
   } catch (err) {
-    return json({ error: `Could not reach geoportal.gov.pl: ${err.message}` }, 502);
+    return json({ error: `Brak połączenia z geoportal.gov.pl: ${err.message}` }, 502);
   }
-  if (!res.ok || !res.body) return json({ error: `geoportal.gov.pl answered ${res.status}.` }, 502);
+  if (!res.ok || !res.body) return json({ error: `geoportal.gov.pl odpowiedział kodem ${res.status}.` }, 502);
 
   const headers = {
     // The document mixes UTF-8 and Windows-1250 values; the browser decodes the bytes itself.

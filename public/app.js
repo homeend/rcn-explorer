@@ -1,17 +1,29 @@
-/* RCN Price Explorer – frontend. Data comes from /api/rcn (see server.py). */
+/* Ceny nieruchomości (RCN) – interfejs. Dane pobiera i przetwarza rcn.js. */
 
 const KINDS = {
-  land:             { label: 'Empty land',          color: '#8c6d1f' },
-  built_land:       { label: 'Built land (no bldg)', color: '#c9a227' },
-  house:            { label: 'House',               color: '#d1495b' },
-  apartment_new:    { label: 'Flat – new',          color: '#2a6fdb' },
-  apartment_resale: { label: 'Flat – resale',       color: '#00a6a6' },
-  apartment:        { label: 'Flat – unknown',      color: '#7aa6e0' },
-  garage:           { label: 'Garage / parking',    color: '#8e8e8e' },
-  commercial_unit:  { label: 'Commercial unit',     color: '#7b4fb5' },
-  other_building:   { label: 'Other building',      color: '#b5651d' },
-  other:            { label: 'Other',               color: '#bbbbbb' },
+  land:             { label: 'Działka niezabudowana',   color: '#8c6d1f' },
+  built_land:       { label: 'Grunt zabudowany (bez bud.)', color: '#c9a227' },
+  house:            { label: 'Dom',                     color: '#d1495b' },
+  apartment_new:    { label: 'Mieszkanie – pierwotny',  color: '#2a6fdb' },
+  apartment_resale: { label: 'Mieszkanie – wtórny',     color: '#00a6a6' },
+  apartment:        { label: 'Mieszkanie – nieokreśl.', color: '#7aa6e0' },
+  garage:           { label: 'Garaż / miejsce post.',   color: '#8e8e8e' },
+  commercial_unit:  { label: 'Lokal użytkowy',          color: '#7b4fb5' },
+  other_building:   { label: 'Inny budynek',            color: '#b5651d' },
+  other:            { label: 'Inne',                    color: '#bbbbbb' },
 };
+// Polish plural forms: 1 transakcja, 2–4 transakcje (but 12–14: transakcji), 5+ transakcji.
+function plural(n, one, few, many) {
+  n = Math.abs(n);
+  if (n === 1) return one;
+  const d = n % 10, h = n % 100;
+  return d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
+}
+const nTrans = (n) => `${n} ${plural(n, 'transakcja', 'transakcje', 'transakcji')}`;
+// Readable Polish for RCN code values.
+const MARKET = { rynekPierwotny: 'pierwotny', rynekWtorny: 'wtórny' };
+const TRANS = { wolnyRynek: 'wolny rynek', sprzedazPrzetargowa: 'sprzedaż przetargowa', sprzedazBezprzetargowa: 'sprzedaż bezprzetargowa',
+  sprzedazWTrybiePrzetargu: 'sprzedaż w trybie przetargu', sprzedazBezprzetargowaNaRzeczNajemcy: 'sprzedaż bezprzetargowa na rzecz najemcy', inna: 'inna' };
 const DEFAULT_ON = ['land', 'house', 'apartment_new', 'apartment_resale'];
 // Sequential palette (viridis-like), 7 classes.
 const RAMP = ['#440154', '#443983', '#31688e', '#21918c', '#35b779', '#90d743', '#fde725'];
@@ -74,14 +86,14 @@ const mpzp = new SingleWMS(MPZP_URL, { LAYERS: 'raster,wektor-str,wektor-lzb,wek
 const mpzpBounds = new SingleWMS(MPZP_URL, { LAYERS: 'granice' }, { opacity: 0.9, minZoom: 13 });
 const rcnWms = wms('https://mapy.geoportal.gov.pl/wss/service/rcn', 'dzialki,budynki,lokale', { minZoom: 17, tileSize: 512 });
 L.control.layers(
-  { 'Base map (Geoportal)': geoBase, 'OpenStreetMap (osm.org)': osm, 'Orthophoto (GUGiK)': ortho },
-  { 'Cadastral parcels – KIEG (zoom ≥16)': kieg, 'Zoning plans – MPZP drawings (zoom ≥14)': mpzp, 'Zoning plan boundaries + names': mpzpBounds, 'Official RCN layer (zoom ≥17)': rcnWms },
+  { 'Mapa bazowa (Geoportal)': geoBase, 'OpenStreetMap (osm.org)': osm, 'Ortofotomapa (GUGiK)': ortho },
+  { 'Działki ewidencyjne – KIEG (zoom ≥16)': kieg, 'Plany miejscowe – MPZP, rysunki (zoom ≥14)': mpzp, 'Granice i nazwy planów MPZP': mpzpBounds, 'Oficjalna warstwa RCN (zoom ≥17)': rcnWms },
   { collapsed: true }
 ).addTo(map);
 L.control.scale({ imperial: false }).addTo(map);
 
 // Marker and radius circle appear once a location has been chosen.
-const centerMarker = L.marker(WROCLAW, { draggable: true, title: 'Centre' });
+const centerMarker = L.marker(WROCLAW, { draggable: true, title: 'Środek' });
 const circle = L.circle(WROCLAW, { radius: state.radius, color: '#1f6feb', weight: 1.5, fill: false, dashArray: '4 4', interactive: false });
 const dataLayer = L.layerGroup().addTo(map);
 
@@ -90,7 +102,7 @@ function setCenter(lat, lon, pan = false) {
   centerMarker.setLatLng([lat, lon]).addTo(map);
   circle.setLatLng([lat, lon]).addTo(map);
   $('loadBtn').disabled = false;
-  if (!state.all.length) status('Location set – press “Download transactions”.');
+  if (!state.all.length) status('Lokalizacja ustawiona – kliknij „Pobierz transakcje”.');
   if (pan) map.fitBounds(circle.getBounds(), { padding: [20, 20], animate: false });
 }
 centerMarker.on('dragend', (e) => { const p = e.target.getLatLng(); setCenter(p.lat, p.lng); });
@@ -111,10 +123,10 @@ syncRadius();
 $('searchForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const ul = $('results');
-  ul.innerHTML = '<li>Searching…</li>';
+  ul.innerHTML = '<li>Szukam…</li>';
   try {
     const res = await geocode($('q').value);
-    ul.innerHTML = res.length ? '' : '<li>Nothing found</li>';
+    ul.innerHTML = res.length ? '' : '<li>Nic nie znaleziono</li>';
     res.forEach((r) => {
       const li = document.createElement('li');
       li.textContent = r.display_name;
@@ -183,7 +195,7 @@ function buildDateRange() {
   state.all.forEach((t) => { const i = t.date && idx.get(t.date.slice(0, 7)); if (i != null) counts[Math.floor(i / per)]++; });
   const top = Math.max(...counts, 1);
   dr.per = per;
-  $('drHist').innerHTML = counts.map((c, i) => `<span data-i="${i}" style="height:${(100 * c / top).toFixed(1)}%" title="${dr.months[i * per]}: ${c} sales"></span>`).join('');
+  $('drHist').innerHTML = counts.map((c, i) => `<span data-i="${i}" style="height:${(100 * c / top).toFixed(1)}%" title="${dr.months[i * per]}: ${nTrans(c)}"></span>`).join('');
   setDateRange(0, max, false);
 }
 function setDateRange(a, b, apply = true) {
@@ -234,9 +246,9 @@ function setPanelCollapsed(collapsed) {
   if (document.body.classList.contains('panel-collapsed') === collapsed) return;
   document.body.classList.toggle('panel-collapsed', collapsed);
   const btn = $('panelToggle');
-  btn.textContent = collapsed ? '▴ Show panel' : '▾ Hide panel';
+  btn.textContent = collapsed ? '▴ Pokaż panel' : '▾ Ukryj panel';
   btn.setAttribute('aria-expanded', String(!collapsed));
-  btn.title = collapsed ? 'Show the table / repeat sales panel' : 'Hide the data panel to see more map';
+  btn.title = collapsed ? 'Pokaż panel z tabelą i ponownymi sprzedażami' : 'Ukryj panel danych, aby zobaczyć więcej mapy';
   try { localStorage.setItem('rcn.panelCollapsed', collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
   const c = map.getCenter();
   map.invalidateSize({ pan: false });
@@ -254,7 +266,7 @@ async function load() {
   const { lat, lon } = state.center, r = state.radius;
   const dLat = r / 111320, dLon = r / (111320 * Math.cos(lat * Math.PI / 180));
   const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon];
-  status('Downloading from geoportal.gov.pl…');
+  status('Pobieranie z geoportal.gov.pl…');
   const stopLoading = showLoading(r);
   try {
     const data = await RCN.loadArea(bbox, layerProgress);
@@ -269,24 +281,25 @@ async function load() {
       setDateRange(i >= 0 ? i : 0, j >= 0 ? j : dr.months.length - 1, false);
       state.pendingRange = null;
     }
-    status(`${state.all.length} transactions within ${r} m (${data.raw_records} register records, ${data.cached ? 'from cache' : data.seconds + ' s'}). ` +
-      `Latest deed: ${years.length ? state.all.map((t) => t.date).sort().at(-1) : '–'}`);
+    status(`${nTrans(state.all.length)} w promieniu ${r} m (${data.raw_records} ${plural(data.raw_records, 'rekord', 'rekordy', 'rekordów')} rejestru, `
+      + `${data.cached ? 'z pamięci przeglądarki' : data.seconds.toLocaleString('pl-PL') + ' s'}). `
+      + `Najnowszy akt: ${years.length ? state.all.map((t) => t.date).sort().at(-1) : '–'}`);
     // Show the data panels only when there is something in them.
     document.body.classList.toggle('has-data', state.all.length > 0);
     map.invalidateSize({ pan: false });
     map.fitBounds(circle.getBounds(), { padding: [20, 20], animate: false });
-    if (!state.all.length) status(`No transactions found within ${r} m. Try a larger radius or another place.`, true);
+    if (!state.all.length) status(`Brak transakcji w promieniu ${r} m. Spróbuj większego promienia albo innego miejsca.`, true);
     buildKindFilter();
     applyFilters();
   } catch (err) {
-    status('Error: ' + err.message, true);
+    status('Błąd: ' + err.message, true);
   } finally {
     stopLoading();
   }
 }
 
 // Overlay with spinner, elapsed time and per-layer progress, shown for every download.
-const LAYER_NAMES = { dzialki: 'Parcels', budynki: 'Buildings', lokale: 'Flats & units' };
+const LAYER_NAMES = { dzialki: 'Działki', budynki: 'Budynki', lokale: 'Lokale' };
 function layerProgress(layer, bytes, done) {
   const el = document.querySelector(`#loadingLayers li[data-layer="${layer}"] .lp`);
   if (!el) return;
@@ -297,22 +310,22 @@ function showLoading(r) {
   const btn = $('loadBtn'), t0 = Date.now();
   btn.disabled = true;
   btn.classList.add('busy');
-  btn.textContent = 'Downloading…';
-  $('loadingTitle').textContent = `Downloading sales within ${r} m`;
+  btn.textContent = 'Pobieranie…';
+  $('loadingTitle').textContent = `Pobieranie transakcji w promieniu ${r} m`;
   $('loadingHint').textContent = '';
   $('loadingTime').textContent = '0 s';
-  $('loadingLayers').innerHTML = RCN.LAYERS.map((l) => `<li data-layer="${l}"><span>${LAYER_NAMES[l]}</span><span class="lp">waiting…</span></li>`).join('');
+  $('loadingLayers').innerHTML = RCN.LAYERS.map((l) => `<li data-layer="${l}"><span>${LAYER_NAMES[l]}</span><span class="lp">czekam…</span></li>`).join('');
   $('loading').hidden = false;
   const tick = setInterval(() => {
     const sec = Math.round((Date.now() - t0) / 1000);
     $('loadingTime').textContent = sec + ' s';
-    if (sec === 8) $('loadingHint').textContent = 'The register service is slow for large areas. A 1 km radius usually takes 10–60 s the first time; repeat downloads come from the cache.';
+    if (sec === 8) $('loadingHint').textContent = 'Usługa rejestru działa wolno przy dużych obszarach. Za pierwszym razem promień 1 km trwa zwykle 10–60 s; kolejne pobrania są brane z pamięci podręcznej.';
   }, 500);
   return () => {
     clearInterval(tick);
     $('loading').hidden = true;
     btn.classList.remove('busy');
-    btn.textContent = 'Download transactions';
+    btn.textContent = 'Pobierz transakcje';
     btn.disabled = !state.center;
   };
 }
@@ -452,11 +465,12 @@ function drawHex(rows, metric) {
     const kinds = {};
     b.items.forEach((t) => (kinds[t.kind] = (kinds[t.kind] || 0) + 1));
     L.polygon(pts, { color: '#fff', weight: 1, fillColor: scale.color(b.med), fillOpacity: 0.75 })
-      .bindTooltip(`<b>${metric === 'year' ? 'Median year' : metric === 'rel' ? 'Median percentile' : 'Median ' + (metric === 'ppm' ? 'PLN/m²' : 'price')}: ${metric === 'year' ? b.med : fmt(b.med)}</b><br>${b.vals.length} sales<br>` +
+      .bindTooltip(`<b>${{ year: 'Rok (mediana)', rel: 'Percentyl (mediana)', relprice: 'Percentyl (mediana)', ppm: 'Cena za m² (mediana)', price: 'Cena (mediana)' }[metric]}: `
+        + `${metric === 'year' ? b.med : fmt(b.med)}${metric === 'ppm' || metric === 'price' ? ' zł' : ''}</b><br>${nTrans(b.vals.length)}<br>` +
         Object.entries(kinds).map(([k, n]) => `${KINDS[k].label}: ${n}`).join('<br>'), { sticky: true })
       .addTo(dataLayer);
   });
-  drawLegend(metric, scale, metric === 'ppm' && state.enabledKinds.size > 1 ? 'Tip: hex medians mix property types. Tick a single type for a fair comparison.' : '');
+  drawLegend(metric, scale, metric === 'ppm' && state.enabledKinds.size > 1 ? 'Wskazówka: mediany w heksagonach mieszają typy nieruchomości. Zaznacz jeden typ, aby porównanie było rzetelne.' : '');
 }
 
 function drawLegend(metric, scale, note = '') {
@@ -466,40 +480,40 @@ function drawLegend(metric, scale, note = '') {
       .map(([, v]) => `<div class="cat"><span class="sw" style="background:${v.color}"></span>${v.label}</div>`).join('');
     return;
   }
-  if (!scale) { el.innerHTML = '<span class="hint">No values for this metric.</span>'; return; }
+  if (!scale) { el.innerHTML = '<span class="hint">Brak wartości dla tej miary.</span>'; return; }
   const f = metric === 'year' || metric === 'rel' || metric === 'relprice' ? (v) => Math.round(v) : metric === 'price' ? fmtK : (v) => fmt(v);
   const mapMode = $('mode').value, open = metric === 'ppm' || metric === 'price';
-  el.innerHTML = `<div>${{ rel: 'PLN / m² – percentile within its type', relprice: 'Total price – percentile within its type', ppm: 'PLN / m²', price: 'Total price (PLN)', year: 'Year of sale' }[metric]} – 7 equal-count classes</div>
+  el.innerHTML = `<div>${{ rel: 'Cena za m² – percentyl w obrębie typu', relprice: 'Cena całkowita – percentyl w obrębie typu', ppm: 'Cena za m² (zł)', price: 'Cena całkowita (zł)', year: 'Rok sprzedaży' }[metric]} – 7 klas o równej liczebności</div>
     <div class="bar">${RAMP.map((c) => `<span style="background:${c}"></span>`).join('')}</div>
     <div class="ticks"><span>${open ? '≤' : ''}${f(scale.min)}</span>${scale.breaks.filter((_, i) => i % 2 === 1).map((b) => `<span>${f(b)}</span>`).join('')}<span>${open ? '≥' : ''}${f(scale.max)}</span></div>
-    ${metric === 'rel' || metric === 'relprice' ? '<div class="hint">0 = cheapest of its type in the selection, 100 = most expensive.</div>' : ''}
+    ${metric === 'rel' || metric === 'relprice' ? '<div class="hint">0 = najtańsza w swoim typie w wybranym zakresie, 100 = najdroższa.</div>' : ''}
     ${mapMode !== 'hex' ? `<div class="outl">${Object.entries(KINDS).filter(([k]) => state.enabledKinds.has(k))
       .map(([, v]) => `<span class="cat"><span class="ring" style="border-color:${v.color}"></span>${v.label}</span>`).join('')}</div>
-    <div class="hint">Outline = property type, fill = value. A hollow ring has no value for this colouring${metric === 'rel' || metric === 'ppm'
-      ? ' – usually a house (RCN rarely records the floor area of a house) or a deed covering several units. Use <i>Total price vs. same type</i> to colour houses too.' : '.'}</div>` : ''}
+    <div class="hint">Obwódka = typ nieruchomości, wypełnienie = wartość. Puste kółko nie ma wartości dla tej miary${metric === 'rel' || metric === 'ppm'
+      ? ' – zwykle to dom (RCN rzadko podaje powierzchnię użytkową domu) albo akt obejmujący kilka lokali. Wybierz <i>Cena całkowita względem typu</i>, aby pokolorować także domy.' : '.'}</div>` : ''}
     ${note ? `<div class="hint">${note}</div>` : ''}`;
 }
 
-const PARTY = { osobaFizyczna: 'private person', osobaPrawna: 'company', gmina: 'municipality', jednostkaSamorzaduTerytorialnego: 'local government',skarbPanstwa: 'State Treasury', powiat: 'county', wojewodztwo: 'voivodeship', inny: 'other' };
+const PARTY = { osobaFizyczna: 'osoba fizyczna', osobaPrawna: 'osoba prawna', gmina: 'gmina', jednostkaSamorzaduTerytorialnego: 'jedn. samorządu terytorialnego', skarbPanstwa: 'Skarb Państwa', powiat: 'powiat', wojewodztwo: 'województwo', inny: 'inny' };
 function popupHtml(t) {
   const rows = [
-    ['Date', t.date || '–'], ['Type', KINDS[t.kind].label], ['Price', fmt(t.price) + ' PLN'],
-    ['Area', t.area ? fmt(t.area, 2) + ' m²' : '–'], ['PLN/m²', fmt(t.ppm)], ['Land area', t.land_area ? fmt(t.land_area) + ' m²' : '–'],
-    ['Market', t.market || '–'], ['Sale type', t.trans_type || '–'],
-    ['Seller → buyer', `${PARTY[t.seller] || t.seller} → ${PARTY[t.buyer] || t.buyer}`], ['Share', t.share || '–'],
-    ['Parcels', t.parcels.join(', ') || '–'], ['Deed', t.deed], ['Distance', fmt(t.dist) + ' m'],
+    ['Data', t.date || '–'], ['Typ', KINDS[t.kind].label], ['Cena', fmt(t.price) + ' zł'],
+    ['Powierzchnia', t.area ? fmt(t.area, 2) + ' m²' : '–'], ['Cena za m²', t.ppm ? fmt(t.ppm) + ' zł' : '–'], ['Pow. gruntu', t.land_area ? fmt(t.land_area) + ' m²' : '–'],
+    ['Rynek', MARKET[t.market] || t.market || '–'], ['Rodzaj transakcji', TRANS[t.trans_type] || t.trans_type || '–'],
+    ['Sprzedający → kupujący', `${PARTY[t.seller] || t.seller} → ${PARTY[t.buyer] || t.buyer}`], ['Udział', t.share || '–'],
+    ['Działki', t.parcels.join(', ') || '–'], ['Akt', t.deed], ['Odległość', fmt(t.dist) + ' m'],
   ];
-  const recs = t.records.map((r) => `<details><summary>${r.layer} record</summary><table>${Object.entries(r.attrs)
+  const recs = t.records.map((r) => `<details><summary>rekord: ${LAYER_NAMES[r.layer] || r.layer}</summary><table>${Object.entries(r.attrs)
     .filter(([k]) => !['gid', 'TERYT', 'TRAN_PRZESTRZEN_NAZW', 'TRAN_LOKALNY_ID_IIP'].includes(k))
     .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table></details>`).join('');
-  return `<div class="popup"><b>${esc(t.address || 'No address')}</b><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</table>
+  return `<div class="popup"><b>${esc(t.address || 'Brak adresu')}</b><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</table>
     ${t.desc ? `<p>${esc(t.desc)}</p>` : ''}${recs}</div>`;
 }
 
 /* ---------------- summary ---------------- */
 function drawSummary() {
   const rows = state.filtered;
-  if (!rows.length) { $('summary').innerHTML = 'No transactions match the filters.'; return; }
+  if (!rows.length) { $('summary').innerHTML = 'Brak transakcji spełniających filtry.'; return; }
   const maxY = Math.max(...rows.map((t) => t.year || 0));
   const recentFrom = maxY - 2;
   const tr = Object.keys(KINDS).filter((k) => rows.some((t) => t.kind === k)).map((k) => {
@@ -507,16 +521,16 @@ function drawSummary() {
     const ppm = rec.map((t) => t.ppm).filter(Boolean), pr = rec.map((t) => t.price).filter(Boolean);
     return `<tr><td><span class="sw" style="background:${KINDS[k].color}"></span> ${KINDS[k].label}</td><td>${all.length}</td><td>${rec.length}</td><td>${fmtK(median(pr))}</td><td>${fmt(median(ppm))}</td></tr>`;
   }).join('');
-  $('summary').innerHTML = `<table><tr><th>Type</th><th>All</th><th>${recentFrom}+</th><th>Med. price</th><th>Med. PLN/m²</th></tr>${tr}</table>
-    <p class="hint">The median columns cover ${recentFrom}–${maxY}.</p>`;
+  $('summary').innerHTML = `<table><tr><th>Typ</th><th>Wszystkie</th><th>${recentFrom}+</th><th>Med. cena</th><th>Med. zł/m²</th></tr>${tr}</table>
+    <p class="hint">Kolumny z medianą obejmują lata ${recentFrom}–${maxY}.</p>`;
 }
 
 const decYear = (d) => +d.slice(0, 4) + (+d.slice(5, 7) - 1) / 12 + (+d.slice(8, 10) - 1) / 365;
 
 /* ---------------- table ---------------- */
 const COLS = [
-  ['date', 'Date'], ['kind', 'Type'], ['address', 'Address'], ['price', 'Price PLN', 1], ['area', 'Area m²', 1],
-  ['ppm', 'PLN/m²', 1], ['land_area', 'Land m²', 1], ['dist', 'Dist. m', 1], ['seller', 'Seller'], ['buyer', 'Buyer'], ['parcels', 'Parcels'], ['deed', 'Deed'],
+  ['date', 'Data'], ['kind', 'Typ'], ['address', 'Adres'], ['price', 'Cena zł', 1], ['area', 'Pow. m²', 1],
+  ['ppm', 'zł/m²', 1], ['land_area', 'Grunt m²', 1], ['dist', 'Odl. m', 1], ['seller', 'Sprzedający'], ['buyer', 'Kupujący'], ['parcels', 'Działki'], ['deed', 'Akt'],
 ];
 function drawTable() {
   const { key, dir } = state.sort;
@@ -559,11 +573,11 @@ function zoomToSeparate(t, others) {
 const highlightLayer = L.layerGroup().addTo(map);
 function highlight(t, info) {
   highlightLayer.clearLayers();
-  const lines = [esc(t.address || t.parcels.join(', ') || 'No address'), `${t.date || 'no date'} · ${fmt(t.price)} PLN`];
-  if (info.samePoint) lines.push(`<span class="hl-note">+${info.samePoint} other sale${info.samePoint > 1 ? 's' : ''} at this exact point (same building)</span>`);
-  else if (!info.separable) lines.push(`<span class="hl-note">Very close neighbour (${info.nearest.toFixed(1)} m) – dots may still touch</span>`);
+  const lines = [esc(t.address || t.parcels.join(', ') || 'Brak adresu'), `${t.date || 'bez daty'} · ${fmt(t.price)} zł`];
+  if (info.samePoint) lines.push(`<span class="hl-note">+${info.samePoint} ${plural(info.samePoint, 'inna transakcja', 'inne transakcje', 'innych transakcji')} w tym samym punkcie (ten sam budynek)</span>`);
+  else if (!info.separable) lines.push(`<span class="hl-note">Bardzo bliski sąsiad (${info.nearest.toFixed(1).replace('.', ',')} m) – punkty mogą się stykać</span>`);
   const icon = L.divIcon({ className: 'hl-icon', iconSize: [0, 0],
-    html: `<div class="hl"><div class="hl-ring"></div><div class="hl-arrow"></div><div class="hl-label" title="Click for details">${lines.join('<br>')}<span class="hl-x" title="Hide">×</span></div></div>` });
+    html: `<div class="hl"><div class="hl-ring"></div><div class="hl-arrow"></div><div class="hl-label" title="Kliknij, aby zobaczyć szczegóły">${lines.join('<br>')}<span class="hl-x" title="Ukryj">×</span></div></div>` });
   const m = L.marker([t.lat, t.lon], { icon, zIndexOffset: 1000, keyboard: false }).addTo(highlightLayer);
   const el = m.getElement();
   L.DomEvent.disableClickPropagation(el);
@@ -608,21 +622,21 @@ const natCmp = (a, b) => a.localeCompare(b, 'pl', { numeric: true, sensitivity: 
 function splitAddress(t) {
   const [town, ...rest] = (t.address || '').split(', ');
   const tail = rest.join(', ').trim();
-  if (!t.address) return { town: '(no address)', street: '(no street)', number: '–' };
+  if (!t.address) return { town: '(brak adresu)', street: '(brak ulicy)', number: '–' };
   const m = tail.match(/^(.*\D)\s+(\S*\d\S*)$/);
   if (m) return { town, street: m[1].trim(), number: m[2] };
-  if (/\d/.test(tail)) return { town, street: '(no street)', number: tail };
-  return { town, street: tail || '(no street)', number: '–' };
+  if (/\d/.test(tail)) return { town, street: '(brak ulicy)', number: tail };
+  return { town, street: tail || '(brak ulicy)', number: '–' };
 }
 function propertyOf(t) {
   if (t.unit_ids.length) {
     const nums = t.unit_ids.map((u) => (u.match(/BUD\.(\w+)_LOK/) || [])[1]).filter(Boolean);
-    return { key: 'L:' + t.unit_ids.join('|'), label: nums.length ? `Unit ${nums.join(', ')}` : 'Unit' };
+    return { key: 'L:' + t.unit_ids.join('|'), label: nums.length ? `Lokal ${nums.join(', ')}` : 'Lokal' };
   }
-  if (t.parcel_ids.length) return { key: 'P:' + t.parcel_ids.join('|'), label: `Parcel ${t.parcels.join(', ')}` };
-  return { key: 'T:' + t.id, label: 'Property' };
+  if (t.parcel_ids.length) return { key: 'P:' + t.parcel_ids.join('|'), label: `${t.parcels.length > 1 ? 'Działki' : 'Działka'} ${t.parcels.join(', ')}` };
+  return { key: 'T:' + t.id, label: 'Nieruchomość' };
 }
-const pctTxt = (v, d = 0) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`;
+const pctTxt = (v, d = 0) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d).replace('.', ',')}%`;
 
 function drawRepeat() {
   const onlyRepeat = $('treeRepeat').checked;
@@ -670,37 +684,37 @@ function drawRepeat() {
     const sales = props.flatMap((p) => p.sales);
     const yearly = sales.filter((t) => t._chg && t._chg.sameKind && t._chg.yearly != null).map((t) => t._chg.yearly);
     const last = sales.map((t) => t.date).filter(Boolean).sort().at(-1);
-    return `<span class="badges"><span>${props.length} ${props.length === 1 ? 'property' : 'properties'}</span><span>${sales.length} sales</span>` +
-      (yearly.length ? `<span class="${median(yearly) >= 0 ? 'up' : 'down'}" title="Median yearly price change between consecutive sales of the same property">${pctTxt(median(yearly), 1)}/yr</span>` : '') +
-      (last ? `<span class="muted">last ${last}</span>` : '') + '</span>';
+    return `<span class="badges"><span>${props.length} ${plural(props.length, 'nieruchomość', 'nieruchomości', 'nieruchomości')}</span><span>${nTrans(sales.length)}</span>` +
+      (yearly.length ? `<span class="${median(yearly) >= 0 ? 'up' : 'down'}" title="Mediana rocznej zmiany ceny między kolejnymi sprzedażami tej samej nieruchomości">${pctTxt(median(yearly), 1)}/rok</span>` : '') +
+      (last ? `<span class="muted">ost. ${last}</span>` : '') + '</span>';
   };
   // Towns start expanded; while searching, every folder with a match is open.
   root.forEach((_, town) => { if (!treeSeen.has(town)) { treeSeen.add(town); treeOpen.add(town); } });
   const pinTargets = new Map();  // key -> sales to show when its pin is clicked
-  const pin = (key, sales) => { pinTargets.set(key, sales); return `<button class="pin" data-pin="${esc(key)}" title="Show on map">📍</button>`; };
+  const pin = (key, sales) => { pinTargets.set(key, sales); return `<button class="pin" data-pin="${esc(key)}" title="Pokaż na mapie">📍</button>`; };
   const folder = (path, icon, label, inner, props, cls = '') =>
     `<details class="node ${cls}" data-path="${esc(path)}" ${q || treeOpen.has(path) ? 'open' : ''}><summary><span class="ico">${icon}</span><span class="lbl">${esc(label)}</span>${pin(path, props.flatMap((p) => p.sales))}${stats(props)}</summary><div class="kids">${inner}</div></details>`;
 
   const leaf = (t) => {
     const c = t._chg;
-    const chg = c ? `<span class="${c.total >= 0 ? 'up' : 'down'}" title="vs ${c.prev.date} (${fmt(c.prev.price)} PLN)${c.sameKind ? '' : ' – type changed, e.g. built on in between'}">${pctTxt(c.total)}${c.yearly != null ? ` · ${pctTxt(c.yearly, 1)}/yr` : ` in ${Math.round(c.yrs * 12)} mo`}${c.sameKind ? '' : ' *'}</span>` : '';
+    const chg = c ? `<span class="${c.total >= 0 ? 'up' : 'down'}" title="względem ${c.prev.date} (${fmt(c.prev.price)} zł)${c.sameKind ? '' : ' – zmienił się typ, np. działka została w międzyczasie zabudowana'}">${pctTxt(c.total)}${c.yearly != null ? ` · ${pctTxt(c.yearly, 1)}/rok` : ` w ${Math.round(c.yrs * 12)} mies.`}${c.sameKind ? '' : ' *'}</span>` : '';
     const rows = [
-      ['Type', KINDS[t.kind].label], ['Price', fmt(t.price) + ' PLN'], ['Usable area', t.area ? fmt(t.area, 2) + ' m²' : '–'],
-      ['PLN/m²', fmt(t.ppm)], ['Land area', t.land_area ? fmt(t.land_area) + ' m²' : '–'], ['Market', t.market || '–'],
-      ['Sale type', t.trans_type || '–'], ['Seller', PARTY[t.seller] || t.seller || '–'], ['Buyer', PARTY[t.buyer] || t.buyer || '–'],
-      ['Share', t.share || '–'], ['Parcels', t.parcels.join(', ') || '–'], ['Units', t.unit_ids.join(', ') || '–'],
-      ['Deed', t.deed || '–'], ['Notary', t.notary || '–'], ['Distance', fmt(t.dist) + ' m'],
+      ['Typ', KINDS[t.kind].label], ['Cena', fmt(t.price) + ' zł'], ['Pow. użytkowa', t.area ? fmt(t.area, 2) + ' m²' : '–'],
+      ['Cena za m²', t.ppm ? fmt(t.ppm) + ' zł' : '–'], ['Pow. gruntu', t.land_area ? fmt(t.land_area) + ' m²' : '–'], ['Rynek', MARKET[t.market] || t.market || '–'],
+      ['Rodzaj transakcji', TRANS[t.trans_type] || t.trans_type || '–'], ['Sprzedający', PARTY[t.seller] || t.seller || '–'], ['Kupujący', PARTY[t.buyer] || t.buyer || '–'],
+      ['Udział', t.share || '–'], ['Działki', t.parcels.join(', ') || '–'], ['Lokale', t.unit_ids.join(', ') || '–'],
+      ['Akt', t.deed || '–'], ['Notariusz', t.notary || '–'], ['Odległość', fmt(t.dist) + ' m'],
     ];
-    if (c) rows.push(['Previous sale', `${c.prev.date} · ${fmt(c.prev.price)} PLN · ${c.yrs.toFixed(1)} years earlier`]);
-    if (t.desc) rows.push(['Description', t.desc]);
+    if (c) rows.push(['Poprzednia sprzedaż', `${c.prev.date} · ${fmt(c.prev.price)} zł · ${c.yrs.toFixed(1).replace('.', ',')} r. wcześniej`]);
+    if (t.desc) rows.push(['Opis', t.desc]);
     return `<details class="leaf" data-id="${t.id}" ${leafOpen.has(t.id) ? 'open' : ''}><summary><span class="ico">📄</span>${pin('sale:' + t.id, [t])}` +
-      `<span class="date">${t.date || 'no date'}</span><span class="sw" style="background:${KINDS[t.kind].color}"></span>` +
-      `<span class="price">${fmt(t.price)} PLN</span><span class="muted">${t.ppm ? fmt(t.ppm) + ' PLN/m²' : t.area ? fmt(t.area, 1) + ' m²' : ''}</span>${chg}</summary>` +
+      `<span class="date">${t.date || 'bez daty'}</span><span class="sw" style="background:${KINDS[t.kind].color}"></span>` +
+      `<span class="price">${fmt(t.price)} zł</span><span class="muted">${t.ppm ? fmt(t.ppm) + ' zł/m²' : t.area ? fmt(t.area, 1) + ' m²' : ''}</span>${chg}</summary>` +
       `<div class="detail"><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</table>` +
-      `<button class="mapBtn" data-id="${t.id}">Show on map</button></div></details>`;
+      `<button class="mapBtn" data-id="${t.id}">Pokaż na mapie</button></div></details>`;
   };
 
-  const last = (k) => k.startsWith('(');  // '(no address)', '(no street)' go to the end
+  const last = (k) => k.startsWith('(');  // '(brak adresu)', '(brak ulicy)' go to the end
   const sortedEntries = (m) => [...m.entries()].sort((a, b) => (last(a[0]) - last(b[0])) || natCmp(a[0], b[0]));
   const html = sortedEntries(root).map(([town, streets]) => {
     const townProps = [...streets.values()].flatMap((n) => [...n.values()].flat());
@@ -721,10 +735,10 @@ function drawRepeat() {
   }).join('');
 
   const allYearly = list.flatMap((p) => p.sales).filter((t) => t._chg && t._chg.sameKind && t._chg.yearly != null).map((t) => t._chg.yearly);
-  $('treeInfo').innerHTML = `${list.length} properties, ${list.reduce((n, p) => n + p.sales.length, 0)} sales` +
-    (allYearly.length ? ` · median change between resales of the same property: <b class="${median(allYearly) >= 0 ? 'up' : 'down'}">${pctTxt(median(allYearly), 1)}/yr</b>` : '');
+  $('treeInfo').innerHTML = `${list.length} ${plural(list.length, 'nieruchomość', 'nieruchomości', 'nieruchomości')}, ${nTrans(list.reduce((n, p) => n + p.sales.length, 0))}` +
+    (allYearly.length ? ` · mediana zmiany ceny między sprzedażami tej samej nieruchomości: <b class="${median(allYearly) >= 0 ? 'up' : 'down'}">${pctTxt(median(allYearly), 1)}/rok</b>` : '');
   const tree = $('tree');
-  tree.innerHTML = html || `<p class="hint">${onlyRepeat ? 'No property in the current selection was sold more than once.' : 'No sales match the filters.'}</p>`;
+  tree.innerHTML = html || `<p class="hint">${onlyRepeat ? 'Żadna nieruchomość w bieżącym wyborze nie została sprzedana więcej niż raz.' : 'Brak transakcji spełniających filtry.'}</p>`;
   tree.querySelectorAll('details.node').forEach((d) => d.addEventListener('toggle', () => { d.open ? treeOpen.add(d.dataset.path) : treeOpen.delete(d.dataset.path); }));
   tree.querySelectorAll('details.leaf').forEach((d) => d.addEventListener('toggle', () => { d.open ? leafOpen.add(d.dataset.id) : leafOpen.delete(d.dataset.id); }));
   tree.querySelectorAll('.mapBtn').forEach((b) => b.onclick = () => focus(state.filtered.find((t) => t.id === b.dataset.id)));
@@ -749,15 +763,21 @@ function download(name, text, type) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 const EXPORT_COLS = ['date', 'kind', 'address', 'price', 'area', 'ppm', 'land_area', 'dist', 'market', 'trans_type', 'seller', 'buyer', 'share', 'parcels', 'deed', 'notary', 'lat', 'lon', 'desc'];
+// CSV is for people (Polish headers and values, Excel-friendly); GeoJSON keeps the raw codes.
+const CSV_HEADERS = { date: 'data', kind: 'typ', address: 'adres', price: 'cena_zl', area: 'pow_uzytkowa_m2', ppm: 'cena_za_m2', land_area: 'pow_gruntu_m2',
+  dist: 'odleglosc_m', market: 'rynek', trans_type: 'rodzaj_transakcji', seller: 'sprzedajacy', buyer: 'kupujacy', share: 'udzial', parcels: 'dzialki',
+  deed: 'akt', notary: 'notariusz', lat: 'szer_geogr', lon: 'dl_geogr', desc: 'opis' };
 function exportCsv() {
   const q = (v) => `"${String(Array.isArray(v) ? v.join(' ') : v ?? '').replace(/"/g, '""')}"`;
-  const csv = [EXPORT_COLS.join(';'), ...state.filtered.map((t) => EXPORT_COLS.map((c) => q(t[c])).join(';'))].join('\r\n');
-  download('rcn_transactions.csv', '﻿' + csv, 'text/csv;charset=utf-8');
+  const val = (t, c) => c === 'kind' ? KINDS[t.kind].label : c === 'market' ? MARKET[t.market] || t.market
+    : c === 'trans_type' ? TRANS[t.trans_type] || t.trans_type : c === 'seller' || c === 'buyer' ? PARTY[t[c]] || t[c] : t[c];
+  const csv = [EXPORT_COLS.map((c) => CSV_HEADERS[c]).join(';'), ...state.filtered.map((t) => EXPORT_COLS.map((c) => q(val(t, c))).join(';'))].join('\r\n');
+  download('rcn_transakcje.csv', '﻿' + csv, 'text/csv;charset=utf-8');
 }
 function exportGeojson() {
   const fc = { type: 'FeatureCollection', features: state.filtered.map((t) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [t.lon, t.lat] },
     properties: Object.fromEntries(EXPORT_COLS.filter((c) => c !== 'lat' && c !== 'lon').map((c) => [c, t[c]])) })) };
-  download('rcn_transactions.geojson', JSON.stringify(fc), 'application/geo+json');
+  download('rcn_transakcje.geojson', JSON.stringify(fc), 'application/geo+json');
 }
 
 // The app starts empty on Wrocław. A link with ?load=1&lat=…&lon=…&r=… opens and
@@ -765,7 +785,7 @@ function exportGeojson() {
 (function initFromUrl() {
   const p = new URLSearchParams(location.search);
   if (location.search) history.replaceState(null, '', location.pathname);
-  status('Search for an address or click the map to choose a location.');
+  status('Wyszukaj adres albo kliknij mapę, aby wybrać lokalizację.');
   if (p.get('load') !== '1') return;
   if (p.has('r')) { state.radius = +p.get('r'); $('radius').value = state.radius; $('radiusOut').textContent = state.radius + ' m'; circle.setRadius(state.radius); }
   if (p.has('mode')) $('mode').value = p.get('mode');

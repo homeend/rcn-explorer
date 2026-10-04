@@ -26,7 +26,7 @@ button.primary { width: 100%; background: var(--accent); color: var(--accent-ink
 #results li { padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
 #results li:hover { background: var(--bg); }
 .check { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; margin: 6px 0; }
-.kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.kinds { display: grid; grid-template-columns: 1fr; gap: 3px; }   /* one per row: Polish type names are long */
 .kinds label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; }
 .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
 .kinds .n { color: var(--muted); margin-left: auto; }
@@ -175,3 +175,12 @@ body.panel-collapsed #tabs button[data-tab].on { border-bottom-color: transparen
 .loading-layers { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; min-width: 220px; }
 .loading-layers li { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .loading-layers li.done { color: var(--ink); }
+
+/* long option texts must not push the sidebar wider */
+#side .row > label { min-width: 0; max-width: 100%; }
+#side select { max-width: 100%; }
+
+/* introduction shown before any data is loaded */
+.intro p { margin: 4px 0 8px; font-size: 13px; line-height: 1.45; }
+.intro ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+body.has-data .intro { display: none; }

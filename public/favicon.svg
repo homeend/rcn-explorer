@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <path d="M32 3C20.4 3 11 12.2 11 23.6 11 39.3 32 61 32 61s21-21.7 21-37.4C53 12.2 43.6 3 32 3z" fill="#1f6feb"/>
+  <circle cx="32" cy="24" r="13" fill="#fff"/>
+  <text x="32" y="29.5" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="#1f6feb">zł</text>
+</svg>
