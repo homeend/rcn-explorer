@@ -780,6 +780,13 @@ function exportGeojson() {
   download('rcn_transakcje.geojson', JSON.stringify(fc), 'application/geo+json');
 }
 
+// Contact address is char-shifted and only turned into a mailto link on interaction,
+// to keep scrapers off it (same scheme as apps.code-drill.eu).
+document.querySelectorAll('a[data-cd]').forEach((a) => {
+  const reveal = () => { a.href = 'mai' + 'lto:' + a.dataset.cd.replace(/./g, (c) => String.fromCharCode(c.charCodeAt(0) - 1)); };
+  ['mouseenter', 'focus', 'touchstart', 'click'].forEach((e) => a.addEventListener(e, reveal));
+});
+
 // The app starts empty on Wrocław. A link with ?load=1&lat=…&lon=…&r=… opens and
 // downloads that area; the parameters are then removed so a refresh starts clean.
 (function initFromUrl() {

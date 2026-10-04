@@ -6,7 +6,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); }
 body { display: grid; grid-template-columns: 340px 1fr; }
-#side { overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 14px 16px 24px; }
+#side { overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 14px 16px 16px;
+  display: flex; flex-direction: column; }   /* column so the footer can sit at the bottom */
 header h1 { font-size: 18px; margin: 0; }
 .sub { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
 section { border-top: 1px solid var(--line); padding: 10px 0; }
@@ -184,3 +185,8 @@ body.panel-collapsed #tabs button[data-tab].on { border-bottom-color: transparen
 .intro p { margin: 4px 0 8px; font-size: 13px; line-height: 1.45; }
 .intro ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
 body.has-data .intro { display: none; }
+
+/* footer link at the bottom of the left column */
+.side-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; text-align: center; }
+.side-foot a { color: var(--muted); text-decoration: none; }
+.side-foot a:hover { color: var(--accent); text-decoration: underline; }
