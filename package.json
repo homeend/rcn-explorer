@@ -1,0 +1,13 @@
+{
+  "name": "rcn-explorer",
+  "private": true,
+  "type": "module",
+  "description": "Map of Polish property transaction prices from the GUGiK Rejestr Cen Nieruchomości, hosted on Cloudflare Pages.",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

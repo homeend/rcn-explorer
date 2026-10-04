@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RCN Price Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+<aside id="side">
+  <header>
+    <h1>RCN Price Explorer</h1>
+    <p class="sub">Polish property transaction register (Rejestr Cen Nieruchomości, GUGiK)</p>
+  </header>
+
+  <section>
+    <h2>1 · Area</h2>
+    <form id="searchForm" class="row">
+      <input autocomplete="off" id="q" placeholder="Town, street number – e.g. Bielany Wrocławskie, Porzeczkowa 3">
+      <button>Find</button>
+    </form>
+    <ul id="results"></ul>
+    <p class="hint">Or click the map to set the centre (you can drag the marker afterwards).</p>
+    <label class="row">Radius
+      <input autocomplete="off" id="radius" type="range" min="200" max="2000" step="100" value="1000">
+      <output id="radiusOut">1000 m</output>
+    </label>
+    <button id="loadBtn" class="primary" disabled>Download transactions</button>
+    <div id="status" class="status"></div>
+  </section>
+
+  <section class="needs-data">
+    <h2>2 · Filter</h2>
+    <div id="kinds" class="kinds"></div>
+    <div class="daterange">
+      <div class="dr-head"><span>Sale date</span><output id="drLabel">–</output></div>
+      <div class="dr-track">
+        <div id="drHist" class="dr-hist"></div>
+        <div id="drBand" class="dr-band"></div>
+        <input autocomplete="off" id="drFrom" type="range" min="0" max="0" value="0" aria-label="From date">
+        <input autocomplete="off" id="drTo" type="range" min="0" max="0" value="0" aria-label="To date">
+      </div>
+      <div class="dr-axis"><span id="drMin"></span><span id="drMax"></span></div>
+      <div class="row">
+        <input autocomplete="off" id="mFrom" type="month" aria-label="From month">
+        <span>–</span>
+        <input autocomplete="off" id="mTo" type="month" aria-label="To month">
+      </div>
+      <div class="presets">
+        <button data-months="12">12 mo</button><button data-months="36">3 y</button>
+        <button data-months="60">5 y</button><button data-months="120">10 y</button><button data-months="0">All</button>
+      </div>
+      <label class="check"><input autocomplete="off" id="undated" type="checkbox" checked> Include sales without a date</label>
+    </div>
+    <label class="check"><input autocomplete="off" id="cleanOnly" type="checkbox" checked> Free-market sales of whole properties only</label>
+    <label class="check"><input autocomplete="off" id="trim" type="checkbox" checked> Hide extreme PLN/m² (outside 2–98th pct per type)</label>
+  </section>
+
+  <section class="needs-data">
+    <h2>3 · Map view</h2>
+    <div class="row">
+      <label>Show
+        <select autocomplete="off" id="mode">
+          <option value="points">Points</option>
+          <option value="polygons">Parcels / buildings</option>
+          <option value="hex">Hex grid (median)</option>
+        </select>
+      </label>
+      <label>Colour by
+        <select autocomplete="off" id="metric">
+          <option value="rel">PLN / m² vs. same type (percentile)</option>
+          <option value="relprice">Total price vs. same type (percentile)</option>
+          <option value="ppm">PLN / m²</option>
+          <option value="price">Total price</option>
+          <option value="year">Year of sale</option>
+          <option value="kind">Property type</option>
+        </select>
+      </label>
+    </div>
+    <label class="row" id="hexRow" style="display:none">Hex size
+      <select autocomplete="off" id="hexSize"><option>75</option><option selected>150</option><option>300</option></select> m
+    </label>
+    <div id="legend"></div>
+  </section>
+
+  <section class="needs-data">
+    <h2>Summary</h2>
+    <div id="summary" class="hint">No data loaded yet.</div>
+    <div class="row">
+      <button id="csvBtn" disabled>Export CSV</button>
+      <button id="geojsonBtn" disabled>Export GeoJSON</button>
+    </div>
+  </section>
+</aside>
+
+<main>
+  <div id="loading" class="loading" hidden role="status" aria-live="polite">
+    <div class="loading-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div id="loadingTitle" class="loading-title">Downloading…</div>
+        <div class="loading-sub">from geoportal.gov.pl (Rejestr Cen Nieruchomości) · <span id="loadingTime">0 s</span></div>
+        <ul id="loadingLayers" class="loading-layers"></ul>
+        <div id="loadingHint" class="loading-hint"></div>
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div id="panel">
+    <nav id="tabs">
+      <button data-tab="table" class="on">Table</button>
+      <button data-tab="repeat">Repeat sales</button>
+      <button data-tab="about">Data notes</button>
+      <button id="panelToggle" class="panel-toggle" aria-expanded="true" title="Hide the data panel to see more map">▾ Hide panel</button>
+    </nav>
+    <div id="tab-table" class="tab on"><div class="tablewrap"><table id="tbl"></table></div></div>
+    <div id="tab-repeat" class="tab">
+      <div class="treebar">
+        <input autocomplete="off" id="treeSearch" type="search" placeholder="Filter by town, street, number, parcel…">
+        <label class="check"><input autocomplete="off" id="treeRepeat" type="checkbox" checked> Only properties sold 2+ times</label>
+        <button id="treeExpand">Expand all</button><button id="treeCollapse">Collapse all</button>
+        <span id="treeInfo" class="hint"></span>
+      </div>
+      <div id="tree" class="tree"></div>
+    </div>
+    <div id="tab-about" class="tab about">
+      <h3>What the data is</h3>
+      <p>Every record is a sale taken from a notarial deed and entered in the Rejestr Cen Nieruchomości by the county
+        office (starostwo). Since 13 Feb 2026 the register is free and public. It is served by GUGiK as a WFS at
+        <code>mapy.geoportal.gov.pl/wss/service/rcn</code> with layers <code>dzialki</code> (parcels),
+        <code>budynki</code> (buildings) and <code>lokale</code> (units). This app groups the records of one deed into one transaction.</p>
+      <p>Your browser downloads the raw register data through a small relay on this site (the register itself does not allow direct browser access), then parses and groups it locally. Downloaded areas are kept in your browser for 7 days.</p>
+      <h3>Reading the numbers</h3>
+      <ul>
+        <li><b>Price</b> is the gross price of the whole transaction. One deed can cover several parcels, a house plus garage, or a flat plus a parking space.</li>
+        <li><b>PLN/m²</b> is calculated only when the area is clear: one flat (usable area), one house (usable area, often missing) or empty land (sum of the parcel areas).</li>
+        <li><b>New vs resale</b> flats come from the <i>rodzaj rynku</i> field. In suburbs, many "new flats" are semi-detached or terraced homes registered as units.</li>
+        <li>Counties upload data with a delay, so the last few months are incomplete. Older years (before about 2010) are often sparse.</li>
+        <li>Sales without a free-market flag (auctions, municipal sales, family transfers) and sales of partial shares distort prices. They are hidden by default.</li>
+      </ul>
+      <h3>Map layers</h3>
+      <p>The layer switcher on the map adds GUGiK orthophoto, cadastral parcels (KIEG, visible when zoomed in), local zoning plans (MPZP)
+        and the official RCN map layer. These are drawn directly by Geoportal's WMS services.</p>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="rcn.js?v=12"></script>
+<script src="app.js?v=13"></script>
+</body>
+</html>
